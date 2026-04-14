@@ -1,0 +1,26 @@
+﻿@import "tailwindcss";
+
+:root {
+  --background: #fff7ed;
+  --foreground: #1e293b;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-nunito);
+  --font-display: var(--font-fredoka);
+}
+
+body {
+  background: radial-gradient(circle at top right, #fde68a 0%, #fff7ed 35%, #ffe4e6 70%, #ffedd5 100%);
+  color: var(--foreground);
+  font-family: var(--font-nunito), sans-serif;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-fredoka), sans-serif;
+}
+
