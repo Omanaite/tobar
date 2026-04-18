@@ -44,7 +44,8 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.json({ url: uploadResult.secure_url });
-  } catch {
+  } catch (error) {
+    console.error("POST /api/upload error", error);
     return NextResponse.json({ error: "No se pudo subir imagen" }, { status: 500 });
   }
 }

@@ -11,11 +11,16 @@ const postSchema = z.object({
 });
 
 export async function GET() {
-  const posts = await prisma.post.findMany({
-    orderBy: { createdAt: "desc" },
-  });
+  try {
+    const posts = await prisma.post.findMany({
+      orderBy: { createdAt: "desc" },
+    });
 
-  return NextResponse.json(posts);
+    return NextResponse.json(posts);
+  } catch (error) {
+    console.error("GET /api/posts error", error);
+    return NextResponse.json({ error: "No se pudo cargar el muro" }, { status: 500 });
+  }
 }
 
 export async function POST(request: Request) {
@@ -40,7 +45,8 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.json(post, { status: 201 });
-  } catch {
+  } catch (error) {
+    console.error("POST /api/posts error", error);
     return NextResponse.json({ error: "No se pudo crear el post" }, { status: 500 });
   }
 }

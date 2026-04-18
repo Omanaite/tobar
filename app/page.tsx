@@ -82,12 +82,14 @@ export default function Home() {
     try {
       const response = await fetch("/api/posts", { cache: "no-store" });
       if (!response.ok) {
-        throw new Error("No se pudo cargar el muro");
+        const errorData = (await response.json().catch(() => ({}))) as { error?: string };
+        throw new Error(errorData.error ?? "No se pudo cargar el muro");
       }
       const data = (await response.json()) as Post[];
       setPosts(data);
-    } catch {
-      toast.error("No se pudo cargar el muro");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "No se pudo cargar el muro";
+      toast.error(message);
     }
   };
 
@@ -173,7 +175,8 @@ export default function Home() {
     });
 
     if (!response.ok) {
-      throw new Error("No se pudo subir imagen");
+      const errorData = (await response.json().catch(() => ({}))) as { error?: string };
+      throw new Error(errorData.error ?? "No se pudo subir imagen");
     }
 
     const data = (await response.json()) as { url: string };
@@ -207,14 +210,16 @@ export default function Home() {
       });
 
       if (!response.ok) {
-        throw new Error("No se pudo publicar");
+        const errorData = (await response.json().catch(() => ({}))) as { error?: string };
+        throw new Error(errorData.error ?? "No se pudo publicar");
       }
 
       toast.success("Mensaje publicado");
       resetForm();
       await loadPosts();
-    } catch {
-      toast.error("No se pudo publicar el mensaje");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "No se pudo publicar el mensaje";
+      toast.error(message);
     } finally {
       setPublishing(false);
     }
