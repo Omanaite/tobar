@@ -4,9 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import EmojiPicker, { EmojiStyle, Theme } from "emoji-picker-react";
 import { Toaster, toast } from "react-hot-toast";
-import { addDoc, collection, onSnapshot, orderBy, query, serverTimestamp } from "firebase/firestore";
-import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
-import { db, isFirebaseConfigured, storage } from "@/lib/firebase";
 
 type Post = {
   id: string;
@@ -15,7 +12,7 @@ type Post = {
   isPrivate: boolean;
   photoUrls: string[];
   gifUrls: string[];
-  createdAt?: { seconds?: number };
+  createdAt: string;
 };
 
 type GiphyResult = {
@@ -30,9 +27,9 @@ type GiphyResult = {
 const MAX_IMAGES = 10;
 const PREVIEW_LENGTH = 180;
 
-function formatDate(value?: { seconds?: number }) {
-  if (!value?.seconds) return "Ahora";
-  return new Date(value.seconds * 1000).toLocaleString("es-CL", {
+function formatDate(value?: string) {
+  if (!value) return "Ahora";
+  return new Date(value).toLocaleString("es-CL", {
     day: "2-digit",
     month: "short",
     year: "numeric",
@@ -49,9 +46,9 @@ function shortText(text: string) {
 function renderTextWithLinks(text: string) {
   const urlRegex = /(https?:\/\/[^\s]+)/g;
   return text.split(urlRegex).map((part, index) => {
-    if (/^https?:\/\/[^\\s]+$/.test(part)) {
+    if (/^https?:\/\/[^\s]+$/.test(part)) {
       return (
-        <a key={`${part}-${index}`} href={part} target="_blank" rel="noreferrer" className="text-blue-700 underline break-all">
+        <a key={`${part}-${index}`} href={part} target="_blank" rel="noreferrer" className="break-all text-blue-700 underline">
           {part}
         </a>
       );
@@ -79,17 +76,23 @@ export default function Home() {
   const [carouselIndex, setCarouselIndex] = useState(0);
   const [carouselAnimating, setCarouselAnimating] = useState(false);
 
-  const canPublish = useMemo(() => message.trim().length > 0 && !publishing && isFirebaseConfigured, [message, publishing]);
+  const canPublish = useMemo(() => message.trim().length > 0 && !publishing, [message, publishing]);
+
+  const loadPosts = async () => {
+    try {
+      const response = await fetch("/api/posts", { cache: "no-store" });
+      if (!response.ok) {
+        throw new Error("No se pudo cargar el muro");
+      }
+      const data = (await response.json()) as Post[];
+      setPosts(data);
+    } catch {
+      toast.error("No se pudo cargar el muro");
+    }
+  };
 
   useEffect(() => {
-    if (!isFirebaseConfigured || !db) return;
-    const q = query(collection(db, "posts"), orderBy("createdAt", "desc"));
-    const unsub = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map((doc) => ({ id: doc.id, ...(doc.data() as Omit<Post, "id">) }));
-      setPosts(data);
-    });
-
-    return () => unsub();
+    void loadPosts();
   }, []);
 
   useEffect(() => {
@@ -160,8 +163,25 @@ export default function Home() {
     setGifOpen(false);
   };
 
+  const uploadImage = async (file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const response = await fetch("/api/upload", {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!response.ok) {
+      throw new Error("No se pudo subir imagen");
+    }
+
+    const data = (await response.json()) as { url: string };
+    return data.url;
+  };
+
   const handlePublish = async () => {
-    if (!canPublish || !db || !storage) return;
+    if (!canPublish) return;
 
     const confirmed = window.confirm("¿Seguro que quieres publicar este mensaje? Después no se podrá editar.");
     if (!confirmed) return;
@@ -170,24 +190,29 @@ export default function Home() {
     try {
       const photoUrls: string[] = [];
       for (const file of files.slice(0, MAX_IMAGES)) {
-        const filePath = `birthday-posts/${Date.now()}-${crypto.randomUUID()}-${file.name}`;
-        const fileRef = ref(storage, filePath);
-        await uploadBytes(fileRef, file);
-        const url = await getDownloadURL(fileRef);
+        const url = await uploadImage(file);
         photoUrls.push(url);
       }
 
-      await addDoc(collection(db, "posts"), {
-        name: name.trim() || "Amigo/a anónimo",
-        message: message.trim(),
-        isPrivate,
-        photoUrls,
-        gifUrls: selectedGifs,
-        createdAt: serverTimestamp(),
+      const response = await fetch("/api/posts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: name.trim(),
+          message: message.trim(),
+          isPrivate,
+          photoUrls,
+          gifUrls: selectedGifs,
+        }),
       });
+
+      if (!response.ok) {
+        throw new Error("No se pudo publicar");
+      }
 
       toast.success("Mensaje publicado");
       resetForm();
+      await loadPosts();
     } catch {
       toast.error("No se pudo publicar el mensaje");
     } finally {
@@ -237,12 +262,6 @@ export default function Home() {
           <p className="mt-2 text-sm text-slate-600 sm:text-base">
             Deja tu mensaje de cumpleanos para Felipe. Abogado brillante, dormilon oficial de las fiestas.
           </p>
-
-          {!isFirebaseConfigured && (
-            <p className="mt-4 rounded-lg bg-rose-100 p-3 text-sm text-rose-700">
-              Configura las variables `NEXT_PUBLIC_FIREBASE_*` y `NEXT_PUBLIC_GIPHY_API_KEY` para habilitar publicaciones.
-            </p>
-          )}
 
           <div className="mt-5 grid gap-3">
             <input
@@ -461,4 +480,3 @@ export default function Home() {
     </div>
   );
 }
-
