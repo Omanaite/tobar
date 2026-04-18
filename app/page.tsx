@@ -26,6 +26,7 @@ type GiphyResult = {
 
 const MAX_IMAGES = 10;
 const PREVIEW_LENGTH = 180;
+const MAX_UPLOAD_BYTES = 3.5 * 1024 * 1024;
 
 function formatDate(value?: string) {
   if (!value) return "Ahora";
@@ -166,8 +167,9 @@ export default function Home() {
   };
 
   const uploadImage = async (file: File) => {
+    const normalizedFile = await normalizeImageForUpload(file);
     const formData = new FormData();
-    formData.append("file", file);
+    formData.append("file", normalizedFile);
 
     const response = await fetch("/api/upload", {
       method: "POST",
@@ -484,4 +486,55 @@ export default function Home() {
       )}
     </div>
   );
+}
+
+async function normalizeImageForUpload(file: File): Promise<File> {
+  if (!file.type.startsWith("image/")) return file;
+  if (file.size <= MAX_UPLOAD_BYTES) return file;
+
+  const bitmap = await createImageBitmap(file);
+  const maxSide = 1920;
+  const ratio = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+  const width = Math.max(1, Math.floor(bitmap.width * ratio));
+  const height = Math.max(1, Math.floor(bitmap.height * ratio));
+
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  if (!context) return file;
+
+  context.drawImage(bitmap, 0, 0, width, height);
+  bitmap.close();
+
+  let quality = 0.86;
+  let outputBlob = await canvasToJpegBlob(canvas, quality);
+  while (outputBlob.size > MAX_UPLOAD_BYTES && quality > 0.45) {
+    quality -= 0.08;
+    outputBlob = await canvasToJpegBlob(canvas, quality);
+  }
+
+  if (outputBlob.size > MAX_UPLOAD_BYTES) {
+    throw new Error("Una foto es demasiado pesada. Usa una imagen mas liviana.");
+  }
+
+  return new File([outputBlob], `${file.name.replace(/\.[^/.]+$/, "")}.jpg`, {
+    type: "image/jpeg",
+  });
+}
+
+function canvasToJpegBlob(canvas: HTMLCanvasElement, quality: number): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) {
+          reject(new Error("No se pudo procesar la imagen"));
+          return;
+        }
+        resolve(blob);
+      },
+      "image/jpeg",
+      quality
+    );
+  });
 }
